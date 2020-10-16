@@ -1,0 +1,150 @@
+allprojects {
+    apply plugin: 'idea'
+    apply plugin: 'signing'
+    apply plugin: 'maven-publish'
+}
+
+idea {
+    project {
+        jdkName = JavaVersion.VERSION_1_8
+        languageLevel = JavaVersion.VERSION_1_8
+
+        vcs = "Git"
+    }
+
+    workspace.iws.withXml { provider ->
+        def junitDefaults = provider.node.component.find { it.@name == 'RunManager' }.configuration.find {
+            it.@type == 'JUnit'
+        }
+        junitDefaults.option.find { it.@name == 'WORKING_DIRECTORY' }.@value = '$MODULE_DIR$'
+    }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+    group = 'com.github.dreamhead'
+    version = '1.1.0'
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+
+    java {
+        withSourcesJar()
+        withJavadocJar()
+    }
+
+    repositories {
+        jcenter()
+        mavenCentral()
+    }
+
+    publishing {
+        publications {
+            mavenJava(MavenPublication) {
+                groupId = project.group
+                artifactId = project.name
+                version = project.version
+
+                from components.java
+
+                pom {
+                    name = project.name
+                    description = 'Moco is an easy setup stub framework, mainly focusing on testing and integration.'
+                    url = 'https://github.com/dreamhead/moco'
+                    licenses {
+                        license {
+                            name = 'MIT Licence'
+                            url = 'https://raw.githubusercontent.com/dreamhead/moco/master/MIT-LICENSE.txt'
+                        }
+                    }
+                    developers {
+                        developer {
+                            id = 'dreamhead'
+                            name = 'Zheng Ye'
+                            email = 'dreamhead.cn@gmail.com'
+                        }
+                    }
+                    scm {
+                        connection = 'https://github.com/dreamhead/moco.git'
+                        developerConnection = 'https://github.com/dreamhead/moco.git'
+                        url = 'https://github.com/dreamhead/moco'
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                def releasesRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+                def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots"
+                url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+                credentials {
+                    username = sonatypeUsername
+                    password = sonatypePassword
+                }
+            }
+        }
+    }
+
+    signing {
+        sign publishing.publications.mavenJava
+    }
+
+    project.jar {
+        manifest {
+            attributes 'Package': "com.github.dreamhead",
+                    'Implementation-Title': "${project.name}",
+                    'Implementation-Version': "${archiveVersion.get()}",
+                    'Implementation-Vendor': 'Zheng Ye',
+                    'Built-By': 'Zheng Ye',
+                    'Built-Date': new Date().getDateTimeString(),
+                    'Built-With': "gradle-${project.getGradle().getGradleVersion()}, groovy-${GroovySystem.getVersion()}",
+                    'Created-By': 'Java ' + System.getProperty('java.version') + ' (' + System.getProperty('java.vendor') + ')'
+        }
+    }
+
+    project.dependencies {
+        implementation(
+                "com.google.guava:guava:$guavaVersion",
+                "io.netty:netty-codec-http:$nettyVersion",
+                "io.netty:netty-handler:$nettyVersion",
+                "com.fasterxml.jackson.core:jackson-databind:$jacksonVersion",
+                "org.apache.httpcomponents:httpclient:$httpComponentVersion",
+                "com.jayway.jsonpath:json-path:$jsonpathVersion",
+                "org.freemarker:freemarker:$freemarkerVersion",
+                "org.slf4j:slf4j-api:$slf4jVersion"
+        )
+
+        testImplementation(
+                "junit:junit:$junitVersion",
+                "org.hamcrest:hamcrest-core:$hamcrestVersion",
+                "org.hamcrest:hamcrest-library:$hamcrestVersion",
+                "org.mockito:mockito-core:$mockitoVersion",
+                "org.apache.httpcomponents:fluent-hc:$httpComponentVersion",
+                "org.skyscreamer:jsonassert:$jsonAssertVersion",
+                "javax.websocket:javax.websocket-api:$websocketVersion"
+        )
+
+        testRuntimeOnly(
+                "org.glassfish.tyrus.bundles:tyrus-standalone-client:$tyrusClientVersion"
+        )
+    }
+
+    test {
+        testLogging {
+            afterSuite { desc, result ->
+                if (!desc.parent) { // will match the outermost suite
+                    println "Results: ${result.resultType} (${result.testCount} tests, ${result.successfulTestCount} successes, ${result.failedTestCount} failures, ${result.skippedTestCount} skipped)"
+                }
+            }
+        }
+    }
+
+    tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint:unchecked"
+        options.compilerArgs << "-Xlint:deprecation"
+    }
+}
+
+wrapper {
+    gradleVersion = '6.6.1'
+}

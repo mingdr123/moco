@@ -1,0 +1,110 @@
+import org.gradle.internal.os.OperatingSystem
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath "net.sf.proguard:proguard-gradle:$proguardVersion"
+    }
+}
+
+project.dependencies {
+    api(project(':moco-core'))
+    implementation("commons-cli:commons-cli:$commonsCliVersion")
+
+    runtimeOnly("ch.qos.logback:logback-classic:$logbackVersion")
+
+    testImplementation project(':moco-core').sourceSets.test.output
+
+    testRuntimeOnly(
+            project(':moco-core').sourceSets.test.resources,
+            project(':moco-runner').sourceSets.main.resources
+    )
+}
+
+task uberjar(type: Jar, dependsOn: jar) {
+    classifier = 'uber'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude('META-INF/maven/**')
+
+    from files(project(':moco-core').sourceSets.main.output.classesDirs)
+    from files(sourceSets.main.output.classesDirs)
+    from files(sourceSets.main.output.resourcesDir)
+    from configurations.runtimeClasspath.asFileTree.files.collect { zipTree(it) }
+
+    manifest {
+        attributes 'Main-Class': 'com.github.dreamhead.moco.bootstrap.Main',
+                'Package': "com.github.dreamhead",
+                'Implementation-Title': "${project.name}",
+                'Implementation-Version': "${archiveVersion.get()}",
+                'Implementation-Vendor': 'Zheng Ye',
+                'Built-By': 'Zheng Ye',
+                'Built-Date': new Date().getDateTimeString(),
+                'Built-With': "gradle-${project.getGradle().getGradleVersion()}, groovy-${GroovySystem.getVersion()}",
+                'Created-By': 'Java ' + System.getProperty('java.version') + ' (' + System.getProperty('java.vendor') + ')'
+    }
+}
+
+task proguard(type: proguard.gradle.ProGuardTask, dependsOn: uberjar) {
+    injars uberjar.archivePath
+    outjars uberjar.archivePath.toString().replace(uberjar.archiveClassifier.get(), 'standalone')
+    if (JavaVersion.current().isJava9Compatible()) {
+        libraryjars javaModPath()
+    } else {
+        libraryjars javaRtLib()
+        libraryjars jsseLib()
+        libraryjars jceLib()
+    }
+
+    configuration file("$rootDir/proguard.pro")
+}
+
+task proguardCheck(type: Test, dependsOn: proguard) {
+    testLogging { exceptionFormat "full" }
+    classpath = classpath - files(sourceSets.main.output.classesDirs) - configurations.runtime + files(proguard.outputs.files.singleFile) + findJar('netty-codec-http')
+}
+
+publishing.publications.findByName('mavenJava').artifact(proguard.outputs.files.singleFile) {
+    classifier "standalone"
+}
+
+publishMavenJavaPublicationToMavenLocal.dependsOn proguard
+publishMavenJavaPublicationToMavenRepository.dependsOn proguard
+
+def javaRtLib() {
+    javaLibPath("/lib/rt.jar", "/../Classes/classes.jar")
+}
+
+def jsseLib() {
+    javaLibPath("/lib/jsse.jar", "/../Classes/jsse.jar")
+}
+
+def jceLib() {
+    javaLibPath("/lib/jce.jar", "/../Classes/jce.jar")
+}
+
+def javaLibPath(String lib, String osxLib) {
+    def javaBase = System.properties["java.home"];
+    def target = lib
+    if (OperatingSystem.current().isMacOsX()) {
+        if (!new File(javaBase + target).exists()) {
+            target = osxLib
+        }
+    }
+    javaBase + target
+}
+
+def javaModPath() {
+    def javaBase = System.properties["java.home"];
+    if (JavaVersion.current().isJava9Compatible()) {
+        return javaBase + '/jmods'
+    }
+
+    throw new IllegalStateException("Illegal Java version for Java modules")
+}
+
+def findJar(String prefix) {
+    configurations.runtime.filter { it.name.startsWith(prefix) }
+}

@@ -1,0 +1,28 @@
+package com.github.dreamhead.moco.parser.model;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.github.dreamhead.moco.MocoEventAction;
+import com.google.common.base.MoreObjects;
+
+import java.util.Map;
+
+import static com.github.dreamhead.moco.Moco.get;
+
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
+public final class GetSetting extends BaseActionSetting {
+    private TextContainer url;
+    private Map<String, TextContainer> headers;
+
+    public MocoEventAction createAction() {
+        return get(url.asResource(), asHeaders(this.headers));
+    }
+
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this)
+                .omitNullValues()
+                .add("url", url)
+                .add("headers", this.headers)
+                .toString();
+    }
+}
